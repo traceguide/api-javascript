@@ -1,15 +1,15 @@
-describe("Library has the expected logging methods", ()=> {
+describe("Library has the expected logging methods", function () {
     expectToBeFunctions("infof warnf errorf fatalf");
 });
 
-describe("Library has only the expected EventEmitter methods", ()=> {
+describe("Library has only the expected EventEmitter methods", function () {
     expectToBeFunctions("on once");
     expectToBeUndefined("emit");
 });
 
-describe("Basic usage", ()=> {
+describe("Basic usage", function () {
 
-    it("should not throw an exception on simple operations", () => {
+    it("should not throw an exception on simple operations", function () {
         traceguide.infof("Hello World %d", 42);
         traceguide.warnf("Hello World %d", 42);
         traceguide.errorf("Hello World %d", 42);
@@ -38,16 +38,16 @@ describe("Basic usage", ()=> {
 
 
 function expectToBeUndefined(list) {
-    _.each(list.split(/\s+/), (name) => {
-        it("should not have a property named " + name, () => {
+    _.each(list.split(/\s+/), function (name) {
+        it("should not have a property named " + name, function() {
             expect(traceguide[name]).to.be.a("undefined");
         });
     });
 }
 
 function expectToBeFunctions(list) {
-    _.each(list.split(/\s+/), (name) => {
-        it("should have a method named " + name, () => {
+    _.each(list.split(/\s+/), function (name) {
+        it("should have a method named " + name, function () {
             expect(traceguide[name]).to.be.a("function");
         });
     });

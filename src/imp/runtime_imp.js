@@ -57,7 +57,7 @@ export default class RuntimeImp extends EventEmitter {
         this._transport = new Transport();
 
         this._reportingLoopActive = false;
-        this._reportStartTime = now;
+        this._reportYoungestMicros = now;
         this._reportTimer = null;
 
         // Report buffers and per-report data
@@ -249,9 +249,11 @@ export default class RuntimeImp extends EventEmitter {
         }
         let errorFlag = (level >= constants.LOG_ERROR);
 
+        // Note: the Thrift JS code writes neither null nor undefined field
+        // values so there is message overhead in these null fields.
         let record = new crouton_thrift.LogRecord({
             timestamp_micros : now,
-            runtime_guid     : null,
+            runtime_guid     : this._runtimeGUID,
             span_guid        : null,
             stable_name      : null,
             message          : message,
@@ -294,6 +296,24 @@ export default class RuntimeImp extends EventEmitter {
         }
     }
 
+    _buffersAreEmpty() {
+        if (this._logRecords.length > 0) {
+            return false;
+        }
+        if (this._spanRecords.length > 0) {
+            return false;
+        }
+
+        // `let <value> of <object>` is problematic in Node v4.1.
+        // https://github.com/babel/babel-loader/issues/84
+        for (let value of Object.entries(this._counters)) {
+            if (value > 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     _addLogRecord(record) {
         if (this._logRecords.length >= this._options.max_log_records) {
             let index = Math.floor(this._logRecords.length * Math.random());
@@ -314,20 +334,23 @@ export default class RuntimeImp extends EventEmitter {
         }
     }
 
-    _buffersAreEmpty() {
-        if (this._logRecords.length > 0) {
-            return false;
+    _restoreRecords(logs, spans, counters) {
+        for (let record of logs) {
+            this._addLogRecord(record);
         }
-        if (this._spanRecords.length > 0) {
-            return false;
+        for (let record of spans) {
+            this._addSpanRecord(record);
         }
-        for (let value of this._counters) {
-            if (value > 0) {
-                return false;
+        for (let record of counters) {
+            if (this._counters[record.Name]) {
+                this._counters[record.Name] += record.Value;
+            } else {
+                this._internalErrorf("Bad counter name: '%s'", record.Name);
             }
         }
-        return true;
     }
+
+
 
     //-----------------------------------------------------------------------//
     // Reporting loop
@@ -425,27 +448,36 @@ export default class RuntimeImp extends EventEmitter {
 
         let thriftCounters = [];
         for (let key in this._counters) {
+            let value = this._counters[key];
+            if (value === 0) {
+                continue;
+            }
             thriftCounters.push(new crouton_thrift.NamedCounter({
                 Name  : coerce.toString(key),
-                Value : coerce.toNumber(this._counters[key]),
+                Value : coerce.toNumber(value),
             }));
         }
 
+        let now = this._platform.nowMicros();
         let report = new crouton_thrift.ReportRequest({
             runtime         : this._thriftRuntime,
-            oldest_micros   : 0,
-            youngest_micros : 0,
+            oldest_micros   : this._reportYoungestMicros,
+            youngest_micros : now,
             log_records     : this._logRecords,
             span_records    : this._spanRecords,
             counters        : thriftCounters,
         });
+        this._clearBuffers();
 
         this._transport.report(detached, this._thriftAuth, report,  (err) => {
             if (err) {
+                // On a failed report, re-enqueue the data that was going to be
+                // sent.
                 this._internalErrorf("Error in report: %j", err);
                 this._internalInfofV1("Report: %j", report);
+                this._restoreRecords(report.log_records, report.span_records, report.counters);
             } else {
-                this._clearBuffers();
+                this._reportYoungestMicros = now;
             }
             done(err);
         });

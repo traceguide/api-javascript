@@ -1,11 +1,8 @@
-var expect = require("chai").expect;
-var traceguide = require("../dist/traceguide-node-debug");
-var _ = require("underscore");
-
 // For the convenience of unit testing, add these to the global namespace
-global.expect = expect;
-global.traceguide = traceguide;
-global._ = _;
+global.expect = require("chai").expect;
+global.traceguide = require("../dist/traceguide-node-debug");
+global._ = require("underscore");
+global.util = require("./util/util");
 global.requireES6 = requireES6;
 
 describe("Traceguide", function() {
@@ -16,6 +13,9 @@ describe("Traceguide", function() {
         describe("options()", function() {
             require("./suites/options.js");
         });
+    });
+    describe("General", function() {
+        require("./suites/on_exit.js");
     });
     describe("Internals", function() {
         describe("coerce", function() {

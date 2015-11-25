@@ -29,6 +29,10 @@ span.end();
 
 See `example/hello_world` for a longer example.
 
+## Supported Platforms
+
+* **Node**: Node versions >= 0.10 are supported.
+
 ## License
 
 [The MIT License](LICENSE).

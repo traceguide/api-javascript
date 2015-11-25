@@ -1,6 +1,8 @@
 
 import Runtime from './runtime';
 
+require('babel-polyfill');
+
 /**
     For convenience, the library can be used directly as a singleton or Runtime
     objects can be explicitly created.
