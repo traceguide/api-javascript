@@ -100,18 +100,21 @@ export default class RuntimeImp extends EventEmitter {
         // Track what options have been modified
         let modified = {};
         this._setOptionString(modified,  opts, 'access_token');
-        this._setOptionString(modified,  opts, 'group_name');
-        this._setOptionString(modified,  opts, 'service_host');
-        this._setOptionInt(modified,     opts, 'service_port');
-        this._setOptionBoolean(modified, opts, 'secure');
-        this._setOptionBoolean(modified, opts, 'disabled');
-        this._setOptionBoolean(modified, opts, 'log_to_console');
+        this._setOptionBoolean(modified, opts, 'certificate_verification');
         this._setOptionBoolean(modified, opts, 'debug');
-        this._setOptionInt(modified,     opts, 'verbosity', 0, 2);
+        this._setOptionBoolean(modified, opts, 'disabled');
         this._setOptionBoolean(modified, opts, 'disable_reporting_loop');
-        this._setOptionInt(modified,     opts, 'report_period_millis');
+        this._setOptionString(modified,  opts, 'group_name');
         this._setOptionInt(modified,     opts, 'log_message_length_hard_limit');
         this._setOptionInt(modified,     opts, 'log_payload_length_hard_limit');
+        this._setOptionBoolean(modified, opts, 'log_to_console');
+        this._setOptionInt(modified,     opts, 'max_log_records');
+        this._setOptionInt(modified,     opts, 'max_span_records');
+        this._setOptionInt(modified,     opts, 'report_period_millis');
+        this._setOptionBoolean(modified, opts, 'secure');
+        this._setOptionString(modified,  opts, 'service_host');
+        this._setOptionInt(modified,     opts, 'service_port');
+        this._setOptionInt(modified,     opts, 'verbosity', 0, 2);
 
         // Check for any unhandled options
         for (let key in opts) {
@@ -207,7 +210,6 @@ export default class RuntimeImp extends EventEmitter {
     //
     _initReportingDataIfNeeded(modified) {
         // Ignore redundant initialization; complaint on inconsistencies
-        this._internalInfof("thirftAUth %j", this._thriftAuth)
         if (this._thriftAuth !== null) {
 
             if (!this._thriftRuntime) {
