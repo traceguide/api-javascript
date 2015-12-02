@@ -25,6 +25,9 @@ describe("Traceguide", function() {
             require("./suites/coerce.js");
         });
     });
+    describe("Regression Testing", function() {
+        require("./suites/regress.js");
+    });
 });
 
 

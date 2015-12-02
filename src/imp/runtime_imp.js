@@ -37,6 +37,10 @@ const kDefaultOptions = {
     // If false, SSL certificate verification is skipped. Useful for localhost
     // testing.
     certificate_verification: true,
+
+    // Hard limits to protect against worst-case behaviors
+    log_message_length_hard_limit : 512 * 1024,
+    log_payload_length_hard_limit : 512 * 1024,
 };
 
 export default class RuntimeImp extends EventEmitter {
@@ -106,6 +110,8 @@ export default class RuntimeImp extends EventEmitter {
         this._setOptionInt(modified,     opts, 'verbosity', 0, 2);
         this._setOptionBoolean(modified, opts, 'disable_reporting_loop');
         this._setOptionInt(modified,     opts, 'report_period_millis');
+        this._setOptionInt(modified,     opts, 'log_message_length_hard_limit');
+        this._setOptionInt(modified,     opts, 'log_payload_length_hard_limit');
 
         // Check for any unhandled options
         for (let key in opts) {
@@ -283,11 +289,9 @@ export default class RuntimeImp extends EventEmitter {
             let payload = {
                 "arguments" : args,
             };
-            try {
-                payloadJSON = JSON.stringify(payload);
-            } catch (_ignored) {
-            }
+            payloadJSON = this._encodePayload(payload);
         }
+
         let errorFlag = (level >= constants.LOG_ERROR);
 
         // Note: the Thrift JS code writes neither null nor undefined field
@@ -312,6 +316,18 @@ export default class RuntimeImp extends EventEmitter {
         if (this._options.log_to_console) {
             this._logToConsole(level, message);
         }
+    }
+
+    // Convert a payload object into a JSON string.  Returns null if the payload
+    // cannot be converted.
+    _encodePayload(payload) {
+        let payloadJSON = null;
+        try {
+            payloadJSON = JSON.stringify(payload);
+        } catch (_ignored) {
+            return null;
+        }
+        return payloadJSON;
     }
 
     _logToConsole(level, text) {
@@ -356,6 +372,18 @@ export default class RuntimeImp extends EventEmitter {
     }
 
     _addLogRecord(record) {
+        if (!record) {
+            this._internalErrorf("Attempt to add null record to buffer");
+        }
+
+        // Check record content against the hard-limits
+        if (record.message && record.message.length > this._options.log_message_length_hard_limit) {
+            record.message = record.message.substr(0, this._options.log_message_length_hard_limit - 1) + "…";
+        }
+        if (record.payload_json && record.payload_json.length > this._options.log_payload_length_hard_limit) {
+            record.payload_json = '{"error":"payload exceeded maximum size"}';
+        }
+
         if (this._logRecords.length >= this._options.max_log_records) {
             let index = Math.floor(this._logRecords.length * Math.random());
             this._logRecords[index] = record;
@@ -524,8 +552,11 @@ export default class RuntimeImp extends EventEmitter {
             if (err) {
                 // On a failed report, re-enqueue the data that was going to be
                 // sent.
-                this._internalErrorf("Error in report: %j", err);
-                this._internalInfofV1("Report: %j", report);
+                if (err.message) {
+                    this._internalErrorf("Error in report: %s (%j)", err.message, err);
+                } else {
+                    this._internalErrorf("Error in report: %j", err);
+                }
                 this._restoreRecords(report.log_records, report.span_records, report.counters);
             } else {
                 if (this._options.debug) {
