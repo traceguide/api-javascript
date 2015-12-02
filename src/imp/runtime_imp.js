@@ -433,7 +433,7 @@ export default class RuntimeImp extends EventEmitter {
 
         this._reportTimer = util.detachedTimeout(()=> {
             this._reportTimer = null;
-            this._flushReport(done);
+            this._flushReport(false, done);
         }, delay);
     }
 
