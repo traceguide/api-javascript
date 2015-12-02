@@ -101,6 +101,7 @@ export default class RuntimeImp extends EventEmitter {
         this._setOptionBoolean(modified, opts, 'debug');
         this._setOptionInt(modified,     opts, 'verbosity', 0, 2);
         this._setOptionBoolean(modified, opts, 'disable_reporting_loop');
+        this._setOptionInt(modified,     opts, 'report_period_millis');
 
         // Check for any unhandled options
         for (let key in opts) {
@@ -373,9 +374,11 @@ export default class RuntimeImp extends EventEmitter {
 
     _startReportingLoop() {
         if (this._options.disabled) {
+            this._internalInfof("Not starting reporting loop: instrumentation is disabled.");
             return;
         }
         if (this._options.disable_reporting_loop) {
+            this._internalInfof("Not starting reporting loop: reporting loop is disabled.");
             return;
         }
         if (this._reportingLoopActive) {
@@ -477,6 +480,12 @@ export default class RuntimeImp extends EventEmitter {
                 this._internalInfofV1("Report: %j", report);
                 this._restoreRecords(report.log_records, report.span_records, report.counters);
             } else {
+                if (this._options.debug) {
+                    let reportWindowSeconds = (now - report.oldest_micros) / 1e6;
+                    this._internalInfof("Report flushed for last %0.3f seconds", reportWindowSeconds);
+                }
+
+                // Update the report timestamp
                 this._reportYoungestMicros = now;
             }
             done(err);
