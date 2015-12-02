@@ -1,4 +1,5 @@
 var fs            = require("fs");
+var path          = require("path");
 var deepClone     = require("clone");
 var _             = require("underscore");
 var FileTransport = require("./file_transport");
@@ -8,12 +9,18 @@ function Util() {
 }
 
 Util.prototype.runtimeReportToFile = function (runtime, filename) {
+    // Put all output in the "results" directory
+    filename = path.join(__dirname, "../results/", filename);
+
     // This is a unit testing utility: unabashedly reach into the object and
     // change what we need to change for testing purposes!
+    var previous = runtime._imp._transport;
     runtime._imp._transport = new FileTransport(filename);
+    return previous;
 };
 
 Util.prototype.requestsFromFile = function (filename) {
+    filename = path.join(__dirname, "../results/", filename);
     var content = JSON.parse(fs.readFileSync(filename, "utf8"));
     return new TestRequests(content);
 };

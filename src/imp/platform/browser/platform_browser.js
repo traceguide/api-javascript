@@ -57,6 +57,10 @@ export default class PlatformBrowser {
         }
         return opts;
     }
+    
+    runtimeAttributes() {
+        return {};
+    }
 }
 
 

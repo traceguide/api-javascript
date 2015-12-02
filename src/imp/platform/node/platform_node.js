@@ -25,7 +25,7 @@ export default class PlatformNode {
         if (!(process && process.argv)) {
             return;
         }
-        
+
         let opts = {};
         for (let value of process.argv) {
             switch (value.toLowerCase()) {
@@ -50,6 +50,14 @@ export default class PlatformNode {
             }
         }
         return opts;
+    }
+
+    runtimeAttributes() {
+        return {
+            node_version  : process.version,
+            node_platform : process.platform,
+            node_arch     : process.arch,
+        };
     }
 }
 

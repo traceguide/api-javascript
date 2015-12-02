@@ -3,6 +3,10 @@ function TestRequests(content) {
     this.requests = content.requests;
 }
 
+TestRequests.prototype.reportCount = function() {
+    return this.requests.length;
+};
+
 TestRequests.prototype.spanRecordCount = function () {
     var count = 0;
     _.each(this.requests, function(req) {

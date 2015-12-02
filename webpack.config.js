@@ -99,6 +99,10 @@ module.exports = {
                     plugins : [ "add-module-exports" ],
                 }
             },
+            {
+                test    : /\.json$/,
+                loader  : "json",
+            },
         ]
     },
 };

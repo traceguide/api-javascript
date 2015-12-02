@@ -1,6 +1,6 @@
 {
   "name": "api-javascript",
-  "version": "0.5.16",
+  "version": "0.5.17",
   "main": "dist/traceguide-node.js",
   "scripts": {
     "thrift-browser": "node ./scripts/build_browser_thrift_lib.js",
@@ -34,6 +34,7 @@
     "chai": "^3.4.1",
     "clone": "^1.0.2",
     "colors": "^1.1.2",
+    "json-loader": "^0.5.4",
     "mocha": "^2.3.4",
     "shelljs": "^0.5.3",
     "underscore": "^1.8.3",

@@ -8,6 +8,7 @@ import SpanImp from './span_imp';
 import * as constants from './constants';
 import * as coerce from './coerce';
 const util = require('./util');
+const packageObject = require('../../package.json');
 
 const kDefaultOptions = {
     access_token            : '',
@@ -83,12 +84,12 @@ export default class RuntimeImp extends EventEmitter {
     //-----------------------------------------------------------------------//
 
     initialize(opts) {
-        this.options(opts);
+        this.options(opts || {});
     }
 
     options(opts) {
         if (typeof opts !== 'object') {
-            throw new UserException('options() must be called with an object');
+            throw new UserException('options() must be called with an object: type was ' + typeof opts);
         }
 
         // Update the options data
@@ -116,11 +117,17 @@ export default class RuntimeImp extends EventEmitter {
         if (opts.access_token || opts.group_name) {
             this._initReportingDataIfNeeded(modified);
         }
+
         if (!this._reportingLoopActive) {
             this._startReportingLoop();
         }
 
-        this._internalInfofV2("Options modified: %j", modified);
+        if (this._options.debug) {
+            let optionsString = _.map(modified, (val, key) => {
+                return "\t" + JSON.stringify(key) + " : " + JSON.stringify(val);
+            }).join("\n");
+            this._internalInfofV2("Options modified:\n%s", optionsString);
+        }
         this.emit('options', modified, this._options);
     }
 
@@ -208,15 +215,34 @@ export default class RuntimeImp extends EventEmitter {
 
         // See if the Thrift data can be initialized
         if (this._options.access_token.length > 0 && this._options.group_name.length > 0) {
+            this._internalInfofV2("Initializing thrift reporting data");
+
             this._thriftAuth = new crouton_thrift.Auth({
                 access_token : this._options.access_token,
             });
+
+            let attrs = {
+                cruntime_name    : packageObject.name,
+                cruntime_version : packageObject.version,
+            };
+            let platformAttrs = this._platform.runtimeAttributes();
+            for (let key in platformAttrs) {
+                attrs[key] = platformAttrs[key];
+            }
+
+            let thriftAttrs = [];
+            for (let key in attrs) {
+                thriftAttrs.push(new crouton_thrift.KeyValue({
+                    Key   : coerce.toString(key),
+                    Value : coerce.toString(attrs[key]),
+                }));
+            }
             this._thriftRuntime = new crouton_thrift.Runtime({
                 guid         : this._runtimeGUID,
                 start_micros : this._startMicros,
                 group_name   : this._options.group_name,
+                attrs        : thriftAttrs,
             });
-
         }
     }
 
@@ -383,6 +409,11 @@ export default class RuntimeImp extends EventEmitter {
             this._internalInfof("Not starting reporting loop: reporting loop is disabled.");
             return;
         }
+        if (this._thriftAuth === null) {
+            // Don't start the loop until the thrift data necessary to do the
+            // report is set up.
+            return;
+        }
         if (this._reportingLoopActive) {
             this._internalErrorf("Reporting loop already started!");
             return;
@@ -395,7 +426,10 @@ export default class RuntimeImp extends EventEmitter {
         // not turn a Node process into a zombie) and do a final explicit flush.
         // Note that the final flush may enqueue asynchronous callbacks that cause
         // the 'beforeExit' event to be re-emitted when those callbacks finish.
-        let finalFlush = () => { this.flush(true) };
+        let finalFlush = () => {
+            this._internalInfof("Final flush before exit.");
+            this.flush(true)
+        };
         let stopReporting = () => { this._stopReportingLoop() };
         this._platform.onBeforeExit(_.once(stopReporting));
         this._platform.onBeforeExit(_.once(finalFlush));

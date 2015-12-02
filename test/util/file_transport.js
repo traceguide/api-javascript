@@ -5,6 +5,10 @@ var _         = require("underscore");
 function FileTransport(filename) {
     this._filename = filename;
     this._requests = [];
+
+    if (fs.existsSync(this._filename)) {
+        fs.unlink(this._filename);
+    }
 }
 
 FileTransport.prototype.ensureConnection = function() {

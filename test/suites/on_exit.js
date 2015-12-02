@@ -5,7 +5,7 @@ var child_process = require("child_process");
 describe("On Exit Behavior", function () {
     it("flush on exit", function (done) {
         var script = path.join(__dirname, "on_exit/child.js");
-        var reportFile = path.join(__dirname, "../results/on_exit.child.json");
+        var reportFile = "on_exit.child.json";
 
         var child = child_process.fork(script, [ reportFile ]);
         child.on('close', function() {

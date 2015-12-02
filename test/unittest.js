@@ -5,6 +5,9 @@ global._ = require("underscore");
 global.util = require("./util/util");
 global.requireES6 = requireES6;
 
+// Send reports to a file, not to the internet
+util.runtimeReportToFile(traceguide, "unittest.json");
+
 describe("Traceguide", function() {
     describe("Core", function() {
         require("./suites/core.js");
