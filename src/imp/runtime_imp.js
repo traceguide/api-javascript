@@ -97,6 +97,9 @@ export default class RuntimeImp extends EventEmitter {
         let modified = {};
         this._setOptionString(modified,  opts, 'access_token');
         this._setOptionString(modified,  opts, 'group_name');
+        this._setOptionString(modified,  opts, 'service_host');
+        this._setOptionInt(modified,     opts, 'service_port');
+        this._setOptionBoolean(modified, opts, 'secure');
         this._setOptionBoolean(modified, opts, 'disabled');
         this._setOptionBoolean(modified, opts, 'log_to_console');
         this._setOptionBoolean(modified, opts, 'debug');
@@ -114,9 +117,7 @@ export default class RuntimeImp extends EventEmitter {
         //
         // Update the state information based on the changes
         //
-        if (opts.access_token || opts.group_name) {
-            this._initReportingDataIfNeeded(modified);
-        }
+        this._initReportingDataIfNeeded(modified);
 
         if (!this._reportingLoopActive) {
             this._startReportingLoop();
@@ -198,17 +199,28 @@ export default class RuntimeImp extends EventEmitter {
     // the library is initialized, which can be helpul in a complex setup with
     // many subsystems.
     //
-    _initReportingDataIfNeeded() {
+    _initReportingDataIfNeeded(modified) {
         // Ignore redundant initialization; complaint on inconsistencies
+        this._internalInfof("thirftAUth %j", this._thriftAuth)
         if (this._thriftAuth !== null) {
+
             if (!this._thriftRuntime) {
                 return this._internalErrorf("Inconsistent state: thrift auth initialized without runtime.")
             }
-            if (this._options.access_token != this._thriftAuth.access_token) {
-                throw new Error("Cannot change access_token after it has been set.");
+            if (modified.access_token) {
+                throw new UserException("Cannot change access_token after it has been set.");
             }
-            if (this._options.group_name != this._thriftRuntime.group_name) {
-                throw new Error("Cannot change group_name after it has been set.");
+            if (modified.group_name) {
+                throw new UserException("Cannot change group_name after it has been set.");
+            }
+            if (modified.service_host) {
+                throw new UserException("Cannot change service_host after the connection is established");
+            }
+            if (modified.service_port) {
+                throw new UserException("Cannot change service_host after the connection is established");
+            }
+            if (modified.secure) {
+                throw new UserException("Cannot change service_host after the connection is established");
             }
             return;
         }
