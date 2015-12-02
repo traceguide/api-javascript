@@ -134,8 +134,10 @@ export default class RuntimeImp extends EventEmitter {
             this._internalWarnf("Invalid int option '%s' '%j'", name, value);
             return;
         }
-        if (!(value >= min && value <= max)) {
-            this._internalWarnf("Option '%s' out of range '%j' is not between %j and %j", name, value, min, max);
+        if (min !== undefined && max !== undefined ) {
+            if (!(value >= min && value <= max)) {
+                this._internalWarnf("Option '%s' out of range '%j' is not between %j and %j", name, value, min, max);
+            }
         }
         this._setOptionValue(modified, opts, name, value);
     }
