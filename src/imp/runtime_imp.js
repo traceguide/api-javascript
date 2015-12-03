@@ -64,6 +64,7 @@ export default class RuntimeImp extends EventEmitter {
         this._reportingLoopActive = false;
         this._reportYoungestMicros = now;
         this._reportTimer = null;
+        this._reportErrorStreak = 0;    // Number of consecuetive errors
 
         // Report buffers and per-report data
         // These data are reset on every successful report.
@@ -378,6 +379,8 @@ export default class RuntimeImp extends EventEmitter {
             this._internalErrorf("Attempt to add null record to buffer");
         }
 
+        record.runtime_guid = this._runtimeGUID;
+
         // Check record content against the hard-limits
         if (record.message && record.message.length > this._options.log_message_length_hard_limit) {
             record.message = record.message.substr(0, this._options.log_message_length_hard_limit - 1) + "…";
@@ -396,6 +399,12 @@ export default class RuntimeImp extends EventEmitter {
     }
 
     _addSpanRecord(record) {
+        if (!record) {
+            this._internalErrorf("Attempt to add null record to buffer");
+        }
+
+        record.runtime_guid = this._runtimeGUID;
+
         if (this._spanRecords.length >= this._options.max_span_records) {
             let index = Math.floor(this._spanRecords.length * Math.random());
             this._spanRecords[index] = record;
@@ -502,8 +511,12 @@ export default class RuntimeImp extends EventEmitter {
             return;
         }
 
+        // After 3 consecutive errors, expand the retry delay up to 8x the
+        // normal interval.
+        let backOff = 1 + Math.min(7, Math.max(0, this._reportErrorStreak - 3));
+
         // Jitter the report delay by +/- 10%
-        let basis = this._options.report_period_millis;
+        let basis = backOff * this._options.report_period_millis;
         let jitter = 1.0 + (Math.random() * 0.2 - 0.1);
         let delay = Math.floor(Math.max(0, jitter * basis));
 
@@ -552,6 +565,9 @@ export default class RuntimeImp extends EventEmitter {
 
         this._transport.report(detached, this._thriftAuth, report,  (err) => {
             if (err) {
+                // How many errors in a row?
+                this._reportErrorStreak++;
+
                 // On a failed report, re-enqueue the data that was going to be
                 // sent.
                 if (err.message) {
@@ -566,7 +582,8 @@ export default class RuntimeImp extends EventEmitter {
                     this._internalInfof("Report flushed for last %0.3f seconds", reportWindowSeconds);
                 }
 
-                // Update the report timestamp
+                // Update internal data after the successful report
+                this._reportErrorStreak = 0;
                 this._reportYoungestMicros = now;
             }
             done(err);
