@@ -282,7 +282,7 @@ export default class RuntimeImp extends EventEmitter {
     //-----------------------------------------------------------------------//
 
     // Create a thrift log record and add it to the internal buffer
-    logFmt(level, fmt, ...args) {
+    logFmt(level, spanGUID, fmt, ...args) {
 
         let now = this._platform.nowMicros();
         let message = sprintf(fmt, ...args);
@@ -302,7 +302,7 @@ export default class RuntimeImp extends EventEmitter {
         let record = new crouton_thrift.LogRecord({
             timestamp_micros : now,
             runtime_guid     : this._runtimeGUID,
-            span_guid        : null,
+            span_guid        : coerce.toString(spanGUID),
             stable_name      : null,
             message          : message,
             level            : constants.LOG_LEVEL_TO_STRING[level] || null,
@@ -318,6 +318,10 @@ export default class RuntimeImp extends EventEmitter {
 
         if (this._options.log_to_console) {
             this._logToConsole(level, message);
+        }
+
+        if (level === constants.LOG_FATAL) {
+            this._platform.fatal(message);
         }
     }
 
@@ -617,7 +621,7 @@ export default class RuntimeImp extends EventEmitter {
     }
     _internalLog(prefix, level, fmt, ...args) {
         if (this._options.debug) {
-            this.logFmt(level, prefix + fmt, ...args);
+            this.logFmt(level, null, prefix + fmt, ...args);
         }
     }
 }

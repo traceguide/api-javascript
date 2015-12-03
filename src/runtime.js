@@ -21,16 +21,16 @@ export default class Runtime {
     }
 
     infof(fmt, ...args) {
-        return this._imp.logFmt(Constants.LOG_INFO, fmt, ...args);
+        return this._imp.logFmt(Constants.LOG_INFO, null, fmt, ...args);
     }
     warnf(fmt, ...args) {
-        return this._imp.logFmt(Constants.LOG_WARN, fmt, ...args);
+        return this._imp.logFmt(Constants.LOG_WARN, null, fmt, ...args);
     }
     errorf(fmt, ...args) {
-        return this._imp.logFmt(Constants.LOG_ERROR, fmt, ...args);
+        return this._imp.logFmt(Constants.LOG_ERROR, null, fmt, ...args);
     }
     fatalf(fmt, ...args) {
-        return this._imp.logFmt(Constants.LOG_FATAL, fmt, ...args);
+        return this._imp.logFmt(Constants.LOG_FATAL, null, fmt, ...args);
     }
 
     flush(doneCallback) {

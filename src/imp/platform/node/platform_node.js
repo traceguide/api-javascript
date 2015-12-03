@@ -59,6 +59,11 @@ export default class PlatformNode {
             node_arch     : process.arch,
         };
     }
+
+    fatal(message) {
+        console.error(message);
+        process.exit(1);
+    }
 }
 
 function computeStartMicros() {

@@ -1,5 +1,6 @@
 import ActiveSpan from '../active_span';
 import * as coerce from './coerce.js';
+import * as constants from './constants';
 import { crouton_thrift } from  '../platform_abstraction_layer';
 
 export default class SpanImp extends ActiveSpan {
@@ -70,6 +71,23 @@ export default class SpanImp extends ActiveSpan {
     end() {
         this._endMicros = this._runtime._platform.nowMicros();
         this._runtime._addSpanRecord(this._toThrift());
+    }
+
+    infof(fmt, ...args) {
+        this._runtime.logFmt(constants.LOG_INFO, this._guid, fmt, ...args);
+        return this;
+    }
+    warnf(fmt, ...args) {
+        this._runtime.logFmt(constants.LOG_WARN, this._guid, fmt, ...args);
+        return this;
+    }
+    errorf(fmt, ...args) {
+        this._runtime.logFmt(constants.LOG_ERROR, this._guid, fmt, ...args);
+        return this;
+    }
+    fatalf(fmt, ...args) {
+        this._runtime.logFmt(constants.LOG_FATAL, this._guid, fmt, ...args);
+        return this;
     }
 
     _toThrift() {

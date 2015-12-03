@@ -19,6 +19,9 @@ describe("Basic usage", function () {
 
         var span = traceguide.span("test_operation");
             var subspan = span.span("test_subspan");
+            subspan.infof("Hello World %d", 42);
+            subspan.warnf("Hello %s %d", "World", 42);
+            subspan.errorf("%s World %f", "Hello", 42.0);
             subspan.end();
         span.end();
 
