@@ -285,7 +285,15 @@ export default class RuntimeImp extends EventEmitter {
     logFmt(level, spanGUID, fmt, ...args) {
 
         let now = this._platform.nowMicros();
-        let message = sprintf(fmt, ...args);
+        let message = null;
+
+        // It's necessary to catch exceptions on the string format for cases
+        // such as circular data structure being passed in as a %j argument.
+        try {
+            message = sprintf(fmt, ...args);
+        } catch (e) {
+            message = "[FORMAT ERROR]: " + fmt;
+        }
 
         let payloadJSON = null;
         if (args.length > 0) {

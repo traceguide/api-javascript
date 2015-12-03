@@ -9,16 +9,17 @@ global.requireES6 = requireES6;
 util.runtimeReportToFile(traceguide, "unittest.json");
 
 describe("Traceguide", function() {
-    describe("Core", function() {
-        require("./suites/core.js");
-    });
     describe("API", function() {
-        describe("options()", function() {
-            require("./suites/options.js");
-        });
+        require("./suites/api.js");
     });
-    describe("General", function() {
-        require("./suites/on_exit.js");
+    describe("Options", function() {
+        require("./suites/options.js");
+    });
+    describe("Logging", function() {
+        require("./suites/logging.js");
+    });
+    describe("Reporting", function() {
+        require("./suites/reporting.js");
     });
     describe("Internals", function() {
         describe("coerce", function() {

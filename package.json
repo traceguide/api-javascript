@@ -1,6 +1,6 @@
 {
   "name": "api-javascript",
-  "version": "0.5.22",
+  "version": "0.5.23",
   "main": "dist/traceguide-node.js",
   "scripts": {
     "thrift-browser": "node ./scripts/build_browser_thrift_lib.js",
