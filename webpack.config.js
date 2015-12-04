@@ -25,10 +25,6 @@ switch (CONFIG) {
         defines.DEBUG = true;
         bundleSuffix = "-debug";
         devtool = "source-map";
-        plugins.push(new webpack.BannerPlugin('require("source-map-support").install();', {
-            raw: true,
-            entryOnly: false
-        }));
         break;
     case "prod":
         plugins.push(new webpack.optimize.UglifyJsPlugin({
@@ -47,19 +43,29 @@ switch (CONFIG) {
         console.error("Unexpected BUILD_CONFIG!");
         process.exit(1);
 }
+
 switch (PLATFORM) {
     case "node":
         bundlePlatform = "-node";
         defines.PLATFORM_NODE = true;
         target = "node";
         libraryTarget = "commonjs2";
+
+        if (CONFIG === "debug") {
+            plugins.push(new webpack.BannerPlugin('require("source-map-support").install();', {
+                raw: true,
+                entryOnly: false
+            }));
+        }
         break;
+
     case "browser":
         bundlePlatform = "-browser";
         defines.PLATFORM_BROWSER = true;
         target = "web";
         libraryTarget = "var";
         break;
+
     default:
         console.error("Unexpected BUILD_PLATFORM!");
         process.exit(1);
