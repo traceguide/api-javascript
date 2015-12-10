@@ -1,6 +1,6 @@
 # api-javascript
 
-Traceguide instrumentation library for JavaScript.
+Traceguide instrumentation library for JavaScript on both the server and in the browser.
 
 ## Installation
 
