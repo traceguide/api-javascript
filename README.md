@@ -2,6 +2,8 @@
 
 Traceguide instrumentation library for JavaScript.
 
+Current build status: [![Circle CI](https://circleci.com/gh/traceguide/api-javascript/tree/master.svg?style=svg)](https://circleci.com/gh/traceguide/api-javascript/tree/master)
+
 ## Installation
 
 ```

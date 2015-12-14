@@ -1,7 +1,10 @@
 {
   "name": "api-javascript",
-  "version": "0.5.29",
+  "version": "0.5.30",
   "main": "dist/traceguide-node.js",
+  "engines": {
+    "node": ">=0.12.0"
+  },
   "scripts": {
     "thrift-browser": "node ./scripts/build_browser_thrift_lib.js",
     "thrift-node": "node ./scripts/build_node_thrift_lib.js",
@@ -10,7 +13,7 @@
     "webpack-node-prod": "BUILD_PLATFORM=node BUILD_CONFIG=prod webpack --display-error-details",
     "webpack-browser-debug": "BUILD_PLATFORM=browser BUILD_CONFIG=debug webpack --display-error-details",
     "webpack-browser-prod": "BUILD_PLATFORM=browser BUILD_CONFIG=prod webpack --display-error-details",
-    "test": "node node_modules/mocha/bin/mocha -c test/unittest_node.js"
+    "test": "rm -f test/results/*.json && node node_modules/mocha/bin/mocha -c test/unittest_node.js"
   },
   "license": "MIT",
   "repository": {
