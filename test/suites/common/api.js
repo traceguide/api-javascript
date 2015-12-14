@@ -1,6 +1,3 @@
-var path = require("path");
-var child_process = require("child_process");
-
 describe("Library has the expected logging methods", function () {
     expectToBeFunctions("infof warnf errorf fatalf");
 });

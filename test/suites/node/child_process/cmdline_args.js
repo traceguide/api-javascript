@@ -1,5 +1,5 @@
-var traceguide = require("../../../dist/traceguide-node-debug");
-var util = require("../../util/util");
+var traceguide = require("../../../../dist/traceguide-node-debug");
+var util = require("../../../util/util");
 
 util.runtimeReportToFile(traceguide, process.argv[2]);
 traceguide.options({

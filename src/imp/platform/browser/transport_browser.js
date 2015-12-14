@@ -75,5 +75,6 @@ export default class TransportBrowser {
         if (hostElem) {
             hostElem.appendChild(elem);
         }
+        return done(null, null);
     }
 }

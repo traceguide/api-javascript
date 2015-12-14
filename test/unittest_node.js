@@ -1,36 +1,22 @@
 // For the convenience of unit testing, add these to the global namespace
+global._ = require("underscore");
 global.expect = require("chai").expect;
 global.traceguide = require("../dist/traceguide-node-debug");
-global._ = require("underscore");
 global.util = require("./util/util");
+
 global.requireES6 = requireES6;
 
 // Send reports to a file, not to the internet
 util.runtimeReportToFile(traceguide, "unittest.json");
 
 describe("Traceguide", function() {
-    describe("API", function() {
-        require("./suites/api.js");
+    describe("Common", function() {
+        require("./suites/common.js");
     });
-    describe("Options", function() {
-        require("./suites/options.js");
-    });
-    describe("Logging", function() {
-        require("./suites/logging.js");
-    });
-    describe("Reporting", function() {
-        require("./suites/reporting.js");
-    });
-    describe("Internals", function() {
-        describe("coerce", function() {
-            require("./suites/coerce.js");
-        });
-    });
-    describe("Regression Testing", function() {
-        require("./suites/regress.js");
+    describe("Node-specific", function() {
+        require("./suites/node.js");
     });
 });
-
 
 // Dynamically transform a ES6 file
 function requireES6(filename) {
