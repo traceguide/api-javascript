@@ -4,7 +4,7 @@ var child_process = require("child_process");
 
 describe("Reporting loop", function() {
     it("should flush at a regular interval", function(done) {
-        this.timeout(2000);
+        this.timeout(5000);
         var runtime = traceguide.createRuntime();
         util.runtimeReportToFile(runtime, "report_flush_loop.json");
         runtime.options({
