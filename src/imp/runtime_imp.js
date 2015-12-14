@@ -272,9 +272,9 @@ export default class RuntimeImp extends EventEmitter {
     //-----------------------------------------------------------------------//
 
     span(name) {
-        let span = new SpanImp(this);
-        span.operation(name);
-        return span;
+        let handle = new SpanImp(this);
+        handle.operation(name);
+        return handle;
     }
 
     //-----------------------------------------------------------------------//
