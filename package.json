@@ -1,6 +1,6 @@
 {
   "name": "api-javascript",
-  "version": "0.5.31",
+  "version": "0.5.32",
   "main": "dist/traceguide-node.js",
   "engines": {
     "node": ">=0.12.0"

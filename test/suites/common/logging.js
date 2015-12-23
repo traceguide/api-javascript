@@ -51,7 +51,7 @@ it("should safely log circular data structures", function () {
 });
 
 it("should not throw an exception on lots of logs and spans", function () {
-    this.timeout(2000);
+    this.timeout(5000);
     for (var i = 0; i < 10000; i++) {
         traceguide.infof("Hello World %d", 42);
 

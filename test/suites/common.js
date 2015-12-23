@@ -4,6 +4,9 @@ describe("API", function() {
 describe("Options", function() {
     require("./common/options.js");
 });
+describe("Spans", function() {
+    require("./common/spans.js");
+});
 describe("Logging", function() {
     require("./common/logging.js");
 });

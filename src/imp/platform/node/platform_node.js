@@ -54,9 +54,10 @@ export default class PlatformNode {
 
     runtimeAttributes() {
         return {
-            node_version  : process.version,
-            node_platform : process.platform,
-            node_arch     : process.arch,
+            cruntime_platform : "node",
+            node_version      : process.version,
+            node_platform     : process.platform,
+            node_arch         : process.arch,
         };
     }
 

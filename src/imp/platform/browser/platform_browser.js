@@ -59,12 +59,14 @@ export default class PlatformBrowser {
     }
 
     runtimeAttributes() {
-        return {};
+        return {
+            cruntime_platform : "browser",
+        };
     }
 
     fatal(message) {
         throw new Error(message);
-    }    
+    }
 }
 
 

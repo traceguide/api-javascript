@@ -22,6 +22,10 @@ export default class SpanImp extends ActiveSpan {
         this._operation = coerce.toString(name);
     }
 
+    guid() {
+        return this._guid;
+    }
+
     attributes(attrsMap) {
         if (arguments.length === 0) {
             return this._attributes;
@@ -35,7 +39,10 @@ export default class SpanImp extends ActiveSpan {
     }
 
     parent(span) {
-        this._attributes['parent_span_guid'] = this._guid;
+        if (!span) {
+            return;
+        }
+        this._attributes['parent_span_guid'] = span._guid;
 
         for (let key in span._attributes) {
             if (this._attributes[key] === undefined) {

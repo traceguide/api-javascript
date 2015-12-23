@@ -39,5 +39,6 @@ setTimeout(function() {
 }, 50);
 
 setTimeout(function() {
+    traceguide.flush();
     console.log("Done!");
-}, 100);
+}, 250);
