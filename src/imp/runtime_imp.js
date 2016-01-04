@@ -1,14 +1,20 @@
-import _ from 'underscore';
+//============================================================================//
+// Imports
+//============================================================================//
+
 import { sprintf } from 'sprintf-js';
 import EventEmitter from 'eventemitter3';
-
 import { Platform, Transport, thrift, crouton_thrift } from '../platform_abstraction_layer';
 import { UserException, InternalException } from './exceptions';
 import SpanImp from './span_imp';
-import * as constants from './constants';
-import * as coerce from './coerce';
-const util = require('./util');
+const _             = require('underscore');
+const constants     = require('../constants');
+const coerce        = require('./coerce');
+const util          = require('./util/util');
+const LogBuilder    = require('./logbuilder');
+const ClockState    = require('./util/clock_state');
 const packageObject = require('../../package.json');
+
 
 const kDefaultOptions = {
     access_token            : '',
@@ -49,13 +55,17 @@ export default class RuntimeImp extends EventEmitter {
         super();
 
         // Platform abstraction layer
-        this._platform = new Platform();
+        this._platform = new Platform(this);
         this._runtimeGUID = this._platform.generateUUID();
         this._options = _.clone(kDefaultOptions);
 
+        this._pluginNames = {};
+        this._customOptions = [];
+
         let now = this._platform.nowMicros();
 
-        // Created as soon as the necessary initialization options are available
+        // The thrift authentication and runtime struct are created as soon as
+        // the necessary initialization options are available.
         this._startMicros = now;
         this._thriftAuth = null;
         this._thriftRuntime = null;
@@ -65,6 +75,20 @@ export default class RuntimeImp extends EventEmitter {
         this._reportYoungestMicros = now;
         this._reportTimer = null;
         this._reportErrorStreak = 0;    // Number of consecuetive errors
+
+        // For clock skew adjustment.
+        this._useClockState = true;
+        this._clockState = new ClockState({
+            nowMicros : () => this._platform.nowMicros(),
+            localStoreGet : () => {
+                let key = `clock_state/${this._options.service_host}`;
+                return this._platform.localStoreGet(key);
+            },
+            localStoreSet : (value) => {
+                let key = `clock_state/${this._options.service_host}`;
+                return this._platform.localStoreSet(key, value);
+            },
+        })
 
         // Report buffers and per-report data
         // These data are reset on every successful report.
@@ -108,7 +132,6 @@ export default class RuntimeImp extends EventEmitter {
         this._setOptionString(modified,  opts, 'group_name');
         this._setOptionInt(modified,     opts, 'log_message_length_hard_limit');
         this._setOptionInt(modified,     opts, 'log_payload_length_hard_limit');
-        this._setOptionBoolean(modified, opts, 'log_to_console');
         this._setOptionInt(modified,     opts, 'max_log_records');
         this._setOptionInt(modified,     opts, 'max_span_records');
         this._setOptionInt(modified,     opts, 'report_period_millis');
@@ -117,7 +140,24 @@ export default class RuntimeImp extends EventEmitter {
         this._setOptionInt(modified,     opts, 'service_port');
         this._setOptionInt(modified,     opts, 'verbosity', 0, 2);
 
-        // Check for any unhandled options
+        // Plug-ins can add customer options. Scan for these.
+        for (let desc of this._customOptions) {
+            switch (desc.type) {
+            case "boolean":
+                this._setOptionBoolean(modified, opts, desc.name);
+                break;
+            case "int":
+                this._setOptionInt(modified, opts, desc.name);
+                break;
+            case "string":
+                this._setOptionString(modified, opts, desc.name);
+                break;
+            default:
+                throw new UserException("Unknown option type '%s'", desc.type);
+            }
+        }
+
+        // Check for any invalid options
         for (let key in opts) {
             if (modified[key] === undefined) {
                 throw new UserException("Invalid option '%s'", key);
@@ -264,7 +304,29 @@ export default class RuntimeImp extends EventEmitter {
                 group_name   : this._options.group_name,
                 attrs        : thriftAttrs,
             });
+
+            this.emit('reporting_initialized');
         }
+    }
+
+    //-----------------------------------------------------------------------//
+    // Plugins
+    //-----------------------------------------------------------------------//
+
+    addPlugin(api, plugin) {
+        let name = plugin.name();
+        if (this._pluginNames[name]) {
+            return;
+        }
+        this._pluginNames[name] = true;
+
+        plugin.start(api);
+    }
+
+    addOption(name, desc) {
+        desc.name = name;
+        this._customOptions.push(desc);
+        this._options[desc.name] = desc.defaultValue;
     }
 
     //-----------------------------------------------------------------------//
@@ -274,6 +336,9 @@ export default class RuntimeImp extends EventEmitter {
     span(name) {
         let handle = new SpanImp(this);
         handle.operation(name);
+
+        this.emit('span_started', handle);
+
         return handle;
     }
 
@@ -281,78 +346,30 @@ export default class RuntimeImp extends EventEmitter {
     // Logging
     //-----------------------------------------------------------------------//
 
+    log() {
+        let b = new LogBuilder(this);
+        return b;
+    }
+
+    logStable(stableName, payload) {
+        this.log()
+            .name(stableName)
+            .payload(payload)
+            .end();
+    }
+
     // Create a thrift log record and add it to the internal buffer
     logFmt(level, spanGUID, fmt, ...args) {
-
-        let now = this._platform.nowMicros();
-        let message = null;
-
-        // It's necessary to catch exceptions on the string format for cases
-        // such as circular data structure being passed in as a %j argument.
-        try {
-            message = sprintf(fmt, ...args);
-        } catch (e) {
-            message = "[FORMAT ERROR]: " + fmt;
-        }
-
-        let payloadJSON = null;
+        let log = this.log()
+            .level(level)
+            .span(spanGUID)
+            .logf(fmt, ...args);
         if (args.length > 0) {
-            let payload = {
+            log.payload({
                 "arguments" : args,
-            };
-            payloadJSON = this._encodePayload(payload);
+            });
         }
-
-        let errorFlag = (level >= constants.LOG_ERROR);
-
-        // Note: the Thrift JS code writes neither null nor undefined field
-        // values so there is message overhead in these null fields.
-        let record = new crouton_thrift.LogRecord({
-            timestamp_micros : now,
-            runtime_guid     : this._runtimeGUID,
-            span_guid        : coerce.toString(spanGUID),
-            stable_name      : null,
-            message          : message,
-            level            : constants.LOG_LEVEL_TO_STRING[level] || null,
-            thread_id        : null,
-            filename         : null,
-            line_number      : null,
-            stack_frames     : null,
-            payload_json     : payloadJSON,
-            error_flag       : errorFlag,
-        });
-
-        this._addLogRecord(record);
-
-        if (this._options.log_to_console) {
-            this._logToConsole(level, message);
-        }
-
-        if (level === constants.LOG_FATAL) {
-            this._platform.fatal(message);
-        }
-    }
-
-    // Convert a payload object into a JSON string.  Returns null if the payload
-    // cannot be converted.
-    _encodePayload(payload) {
-        let payloadJSON = null;
-        try {
-            payloadJSON = JSON.stringify(payload);
-        } catch (_ignored) {
-            return null;
-        }
-        return payloadJSON;
-    }
-
-    _logToConsole(level, text) {
-        if (level === constants.LOG_INFO) {
-            console.log(text);
-        } else if (level === constants.LOG_WARN) {
-            console.warn(text);
-        } else {
-            console.error(text);
-        }
+        log.end();
     }
 
     //-----------------------------------------------------------------------//
@@ -386,19 +403,33 @@ export default class RuntimeImp extends EventEmitter {
         return true;
     }
 
+    // Adds a completed record into the log buffer
     _addLogRecord(record) {
-        if (!record) {
-            this._internalErrorf("Attempt to add null record to buffer");
-        }
-
-        record.runtime_guid = this._runtimeGUID;
-
         // Check record content against the hard-limits
         if (record.message && record.message.length > this._options.log_message_length_hard_limit) {
             record.message = record.message.substr(0, this._options.log_message_length_hard_limit - 1) + "…";
         }
         if (record.payload_json && record.payload_json.length > this._options.log_payload_length_hard_limit) {
             record.payload_json = '{"error":"payload exceeded maximum size"}';
+        }
+
+        this._internalAddLogRecord(record);
+        this.emit('log_added', record);
+
+        if (record.level === constants.LOG_FATAL) {
+            this._platform.fatal(message);
+        }
+    }
+
+    // Internal worker for adding the log record to the buffer.
+    //
+    // Note: this is also used when a failed report needs to restores records
+    // back to the buffer, therefore it should not do things like echo the
+    // log message to the console with the assumption this is a new record.
+    _internalAddLogRecord(record) {
+        if (!record) {
+            this._internalErrorf("Attempt to add null record to buffer");
+            return;
         }
 
         if (this._logRecords.length >= this._options.max_log_records) {
@@ -411,11 +442,15 @@ export default class RuntimeImp extends EventEmitter {
     }
 
     _addSpanRecord(record) {
+        this._internalAddSpanRecord(record);
+        this.emit('span_added', record);
+    }
+
+    _internalAddSpanRecord(record) {
         if (!record) {
             this._internalErrorf("Attempt to add null record to buffer");
+            return;
         }
-
-        record.runtime_guid = this._runtimeGUID;
 
         if (this._spanRecords.length >= this._options.max_span_records) {
             let index = Math.floor(this._spanRecords.length * Math.random());
@@ -428,10 +463,10 @@ export default class RuntimeImp extends EventEmitter {
 
     _restoreRecords(logs, spans, counters) {
         for (let record of logs) {
-            this._addLogRecord(record);
+            this._internalAddLogRecord(record);
         }
         for (let record of spans) {
-            this._addSpanRecord(record);
+            this._internalAddSpanRecord(record);
         }
         for (let record of counters) {
             if (this._counters[record.Name]) {
@@ -441,8 +476,6 @@ export default class RuntimeImp extends EventEmitter {
             }
         }
     }
-
-
 
     //-----------------------------------------------------------------------//
     // Reporting loop
@@ -491,7 +524,7 @@ export default class RuntimeImp extends EventEmitter {
         // the 'beforeExit' event to be re-emitted when those callbacks finish.
         let finalFlush = () => {
             this._internalInfof("Final flush before exit.");
-            this.flush(true)
+            this.flush(true);
         };
         let stopReporting = () => { this._stopReportingLoop() };
         this._platform.onBeforeExit(_.once(stopReporting));
@@ -523,15 +556,21 @@ export default class RuntimeImp extends EventEmitter {
             return;
         }
 
-        // After 3 consecutive errors, expand the retry delay up to 8x the
-        // normal interval.
-        let backOff = 1 + Math.min(7, Math.max(0, this._reportErrorStreak - 3));
+        // If the clock state is still being primed, potentially use the
+        // shorted report interval
+        let reportPeriod = this._options.report_period_millis;
+        if (!this._clockState.isReady()) {
+            reportPeriod = Math.min(constants.CLOCK_STATE_REFRESH_INTERVAL_MS, reportPeriod);
+        }
 
-        // Jitter the report delay by +/- 10%
-        let basis = backOff * this._options.report_period_millis;
+        // After 3 consecutive errors, expand the retry delay up to 8x the
+        // normal interval. Also, jitter the delay by +/- 10%
+        let backOff = 1 + Math.min(7, Math.max(0, this._reportErrorStreak - 3));
+        let basis = backOff * reportPeriod;
         let jitter = 1.0 + (Math.random() * 0.2 - 0.1);
         let delay = Math.floor(Math.max(0, jitter * basis));
 
+        this._internalInfofV2("Delaying next flush for %dms", delay);
         this._reportTimer = util.detachedTimeout(()=> {
             this._reportTimer = null;
             this._flushReport(false, done);
@@ -541,20 +580,57 @@ export default class RuntimeImp extends EventEmitter {
     _flushReport(detached, done) {
         done = done || function(err) {};
 
-        // Early out if we can
-        if (this._buffersAreEmpty()) {
-            this._internalInfofV2("Skipping empty report");
-            done(null);
-            return;
-        }
+        let clockReady = this._clockState.isReady();
+        let clockOffsetMicros = this._clockState.offsetMicros();
 
-        this._internalInfofV2("Flushing report");
+        // Diagnostic information on the clock correction
+        this.logStable("cr/time_correction_state", {
+            offset_micros  : clockOffsetMicros,
+            active_samples : this._clockState.activeSampleCount(),
+            ready          : clockReady,
+        });
+
+        let logRecords = this._logRecords;
+        let spanRecords = this._spanRecords;
+        let counters = this._counters;
+
+        // If the clock is not ready, do an "empty" flush to build more clock
+        // samples before the real data is reported.
+        // A detached flush (i.e. one intended to fire at exit or other "last
+        // ditch effort" event) should always use the real data.
+        if (this._useClockState && !clockReady && !detached) {
+            this._internalInfofV2("Flushing empty report to prime clock state");
+            logRecords  = [];
+            spanRecords = [];
+            counters    = {};
+        } else {
+            // Early out if we can.
+            if (this._buffersAreEmpty()) {
+                this._internalInfofV2("Skipping empty report");
+                return done(null);;
+            }
+
+            // Clear the object buffers as the data is now in the local
+            // variables
+            this._clearBuffers();
+
+            this._internalInfofV2("Flushing report (%d logs, %d spans)", logRecords.length, spanRecords.length);
+        }
 
         this._transport.ensureConnection(this._options);
 
+        // Ensure the runtime GUID is set as it is possible buffer logs and
+        // spans before the GUID is necessarily set.
+        for (let record of logRecords) {
+            record.runtime_guid = this._runtimeGUID;
+        }
+        for (let record of spanRecords) {
+            record.runtime_guid = this._runtimeGUID;
+        }
+
         let thriftCounters = [];
-        for (let key in this._counters) {
-            let value = this._counters[key];
+        for (let key in counters) {
+            let value = counters[key];
             if (value === 0) {
                 continue;
             }
@@ -569,13 +645,19 @@ export default class RuntimeImp extends EventEmitter {
             runtime         : this._thriftRuntime,
             oldest_micros   : this._reportYoungestMicros,
             youngest_micros : now,
-            log_records     : this._logRecords,
-            span_records    : this._spanRecords,
+            log_records     : logRecords,
+            span_records    : spanRecords,
             counters        : thriftCounters,
         });
-        this._clearBuffers();
 
-        this._transport.report(detached, this._thriftAuth, report,  (err) => {
+        this.emit("prereport", report);
+        let originMicros = this._platform.nowMicros();
+
+        this._transport.report(detached, this._thriftAuth, report,  (err, res) => {
+
+            let destinationMicros = this._platform.nowMicros();
+            this.emit("postreport", report);
+
             if (err) {
                 // How many errors in a row?
                 this._reportErrorStreak++;
@@ -588,7 +670,15 @@ export default class RuntimeImp extends EventEmitter {
                     this._internalErrorf("Error in report: %j", err);
                 }
                 this._restoreRecords(report.log_records, report.span_records, report.counters);
+
+                this.emit('report_error', err, {
+                    error    : err,
+                    streak   : this._reportErrorStreak,
+                    detached : detached,
+                });
+
             } else {
+
                 if (this._options.debug) {
                     let reportWindowSeconds = (now - report.oldest_micros) / 1e6;
                     this._internalInfof("Report flushed for last %0.3f seconds", reportWindowSeconds);
@@ -597,8 +687,24 @@ export default class RuntimeImp extends EventEmitter {
                 // Update internal data after the successful report
                 this._reportErrorStreak = 0;
                 this._reportYoungestMicros = now;
+
+                // Update the clock state if there's info from the report
+                if (res && res.timing && res.timing.receive_micros && res.timing.transmit_micros) {
+                    this._clockState.addSample(
+                        originMicros,
+                        res.timing.receive_micros,
+                        res.timing.transmit_micros,
+                        destinationMicros);
+                } else {
+                    // The response does not have timing information. Disable
+                    // the clock state assuming there'll never be timing data
+                    //to use.
+                    this._useClockState = false;
+                }
+
+                this.emit('report', report, res);
             }
-            done(err);
+            return done(err);
         });
     }
 

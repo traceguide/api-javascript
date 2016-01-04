@@ -6,3 +6,7 @@ export function toString(value) {
 export function toNumber(value) {
     return Number(value);
 }
+
+export function toBoolean(value) {
+    return !!value;
+}

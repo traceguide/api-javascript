@@ -1,6 +1,4 @@
 
-
-
 let nowMicrosImp = (function() {
     // Is a hi-res timer available?
     if (performance &&
@@ -21,7 +19,11 @@ let nowMicrosImp = (function() {
 })();
 
 
-export default class PlatformBrowser {
+class PlatformBrowser {
+
+    constructor(imp) {
+    }
+
     name() {
         return 'browser';
     }
@@ -64,8 +66,30 @@ export default class PlatformBrowser {
         };
     }
 
+    // There's no way to truly "fatal" on the browser; the best approximation
+    // is an Error exception.
     fatal(message) {
         throw new Error(message);
+    }
+
+    localStoreGet(key) {
+        if (!window.localStorage) {
+            return null;
+        }
+        try {
+            return JSON.parse(localStorage.getItem(`traceguide/${key}`));
+        } catch (_ignored) {
+            return null;
+        }
+    }
+
+    localStoreSet(key, value) {
+        if (!window.localStorage) {
+            return;
+        }
+        try {
+            localStorage.setItem(`traceguide/${key}`, JSON.stringify(value));
+        } catch (_ignored) {}
     }
 }
 
@@ -87,3 +111,5 @@ function urlQueryParameters(defaults) {
     }
     return vars;
 }
+
+module.exports = PlatformBrowser;

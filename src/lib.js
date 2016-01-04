@@ -1,6 +1,6 @@
 
 import Runtime from './runtime';
-
+const constants = require('./constants');
 require('babel-polyfill');
 
 /**
@@ -8,6 +8,11 @@ require('babel-polyfill');
     objects can be explicitly created.
  */
 class Lib extends Runtime {
+
+    constructor() {
+        super();
+        this.constants = constants;
+    }
 
     createRuntime() {
         let runtime = new Runtime();

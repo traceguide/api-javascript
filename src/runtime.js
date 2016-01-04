@@ -1,11 +1,14 @@
 
 import RuntimeImp from './imp/runtime_imp';
-import * as Constants from './imp/constants';
+import * as Constants from './constants';
 
 export default class Runtime {
 
     constructor() {
         this._imp = new RuntimeImp();
+
+        // Built-in plugins
+        this._imp.addPlugin(this, require('./plugins/log_to_console'));
     }
 
     initialize(opts) {
@@ -38,9 +41,19 @@ export default class Runtime {
     }
 
     on() {
-        return this._imp.on(this._imp, ...arguments);
+        return this._imp.on(...arguments);
     }
     once() {
-        return this._imp.once(this._imp, ...arguments);
+        return this._imp.once(...arguments);
+    }
+    removeListener() {
+        return this._imp.removeListener(...arguments);
+    }
+
+    addPlugin(plugin) {
+        return this._imp.addPlugin(plugin);
+    }
+    addOption(name, desc) {
+        return this._imp.addOption(name, desc);
     }
 }

@@ -1,7 +1,6 @@
 import thrift from 'thrift';
 import crouton_thrift from './crouton_thrift';
 
-
 export default class TransportNode {
 
     constructor() {

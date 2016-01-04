@@ -62,3 +62,22 @@ it("should not throw an exception on lots of logs and spans", function () {
     }
     traceguide.flush();
 });
+
+it("should emit a 'log_added' event for every log", function() {
+    var count = 0;
+    var onLog = function (record) {
+        count++;
+    };
+
+    traceguide.on('log_added', onLog);
+    traceguide.infof("Test %d", 124);
+    traceguide.warnf("Test");
+    traceguide.errorf("Test");
+    for (var i = 0; i < 7; i++) {
+        traceguide.infof("Loop");
+    }
+    traceguide.removeListener('log_added', onLog);
+    traceguide.infof("Extra");
+
+    expect(count).to.equal(10);
+});

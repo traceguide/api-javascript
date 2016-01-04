@@ -1,6 +1,6 @@
 import ActiveSpan from '../active_span';
 import * as coerce from './coerce.js';
-import * as constants from './constants';
+import * as constants from '../constants';
 import { crouton_thrift } from  '../platform_abstraction_layer';
 
 export default class SpanImp extends ActiveSpan {
@@ -35,7 +35,6 @@ export default class SpanImp extends ActiveSpan {
             this._runtime._internalWarnf("Bad arguments to attributes()", arguments);
             return;
         }
-
     }
 
     parent(span) {
