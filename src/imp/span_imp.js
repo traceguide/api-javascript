@@ -7,64 +7,79 @@ export default class SpanImp extends ActiveSpan {
 
     constructor(runtime) {
         super();
-        this._runtime = runtime;
+        this._runtime     = runtime;
+        this._ended       = false;
 
-        this._guid = this._runtime._platform.generateUUID();
-        this._operation = '';
-        this._joinIDs = {};
-        this._attributes = {};
+        this._guid        = this._runtime._platform.generateUUID();
+        this._operation   = '';
+        this._tags        = {};
         this._beginMicros = this._runtime._platform.nowMicros();
-        this._endMicros = 0;
-        this._errorFlag = 0;
+        this._endMicros   = 0;
+        this._errorFlag   = false;
     }
 
     operation(name) {
+        if (arguments.length === 0) {
+            return this._operation;
+        }
         this._operation = coerce.toString(name);
     }
 
+    // Getter only. The GUID is immutable once set internally.
     guid() {
         return this._guid;
     }
 
-    attributes(attrsMap) {
+    tags(tagMap) {
         if (arguments.length === 0) {
-            return this._attributes;
+            return this._tags;
         }
-
-        if (arguments.length !== 1 || typeof attrsMap !== 'object') {
+        if (arguments.length !== 1 || typeof tagMap !== 'object') {
             this._runtime._internalWarnf("Bad arguments to attributes()", arguments);
             return;
         }
+        for (let key in tagMap) {
+            this._tags[key] = tagMap[key];
+        }
     }
 
-    parent(span) {
-        if (!span) {
+    modify(fields) {
+        if (!fields) {
+            return this;
+        }
+        if (fields.begin_micros) {
+            this._beginMicros = fields.begin_micros;
+        }
+        if (fields.end_micros) {
+            this._endMicros = fields.end_micros;
+        }
+        return this;
+    }
+
+    setTagAsJoinID(tagKey) {
+        this._joinIDs[tagKey] = true;
+    }
+
+    parent(parentSpan) {
+        if (!parentSpan) {
             return;
         }
-        this._attributes['parent_span_guid'] = span._guid;
-
-        for (let key in span._attributes) {
-            if (this._attributes[key] === undefined) {
-                this._attributes[key] = span._attributes[key];
-            }
-        }
-        for (let key in span._joinIDs) {
-            if (this._joinIDs[key] === undefined) {
-                this._joinIDs[key] = span._joinIDs[key];
-            }
-        }
-    }
-
-    joinIDs(map) {
-        for (let key in map) {
-            this._joinIDs[key] = map[key];
-        }
-    }
-
-    endUserID(value) {
-        return this.joinIDs({
-            'end_user_id' : value,
+        this.tags({
+            parent_span_guid : parentSpan._guid,
         });
+
+        // Merge in any of the parent tags that have not already been set on
+        // the child.
+        let parentTags = parentSpan.tags();
+        for (let key in parentTags) {
+            if (this._tags[key] !== undefined) {
+                continue;
+            }
+            this._tags[key] = parentTags[key];
+            if (parentSpan._joinIDs[key]) {
+                this._joinIDs[key] = true;
+            }
+        }
     }
 
     span(operation) {
@@ -75,8 +90,73 @@ export default class SpanImp extends ActiveSpan {
     }
 
     end() {
-        this._endMicros = this._runtime._platform.nowMicros();
+        // Ensure a single span is not recorded multiple times
+        if (this._ended) {
+            return;
+        }
+        this._ended = true;
+
+        // Do not set endMicros if it has already been set. This accounts for
+        // the case of a span that has had it's times set manually (i.e. allows
+        // for retroactively created spans that might not be possible to create
+        // in real-time).
+        //
+        if (this._endMicros === 0) {
+            this._endMicros = this._runtime._platform.nowMicros();
+        }
         this._runtime._addSpanRecord(this._toThrift());
+    }
+
+    // Log record specified by fields
+    log(fields) {
+        let rec = this._runtime.log()
+            .span(this._guid)
+            .level(constants.LOG_STRING_TO_LEVEL[fields.level] || constants.LOG_INFO);
+
+        if (fields.message !== undefined) {
+            rec.message(fields.message);
+        }
+        if (fields.payload !== undefined) {
+            rec.payload(fields.payload);
+        }
+        if (fields.timestamp_micros !== undefined) {
+            rec.timestamp(fields.timestamp_micros);
+        }
+        rec.end();
+    }
+
+    // Info log record with an optional payload
+    info(msg, payload) {
+        this._runtime.log()
+            .span(this._guid)
+            .level(constants.LOG_INFO)
+            .message(msg)
+            .payload(payload)
+            .end();
+    }
+    warn(msg, payload) {
+        this._runtime.log()
+            .span(this._guid)
+            .level(constants.LOG_WARN)
+            .message(msg)
+            .payload(payload)
+            .end();
+    }
+    error(msg, payload) {
+        this._runtime.log()
+            .span(this._guid)
+            .level(constants.LOG_ERROR)
+            .message(msg)
+            .payload(payload)
+            .end();
+    }
+    fatal(msg, payload) {
+        this._runtime.log()
+            .span(this._guid)
+            .level(constants.LOG_FATAL)
+            .message(msg)
+            .payload(payload)
+            .end();
     }
 
     infof(fmt, ...args) {
@@ -97,19 +177,33 @@ export default class SpanImp extends ActiveSpan {
     }
 
     _toThrift() {
-        let joinIDs = [];
-        for (let key in this._joinIDs) {
-            joinIDs.push(new crouton_thrift.TraceJoinId({
-                TraceKey : coerce.toString(key),
-                Value    : coerce.toString(this._joinIDs[key]),
+        let tags = [];
+        for (let key in this._tags) {
+            tags.push(new crouton_thrift.KeyValue({
+                Key   : coerce.toString(key),
+                Value : coerce.toString(this._tags[key]),
             }));
         }
 
-        let attributes = [];
-        for (let key in this._attributes) {
-            attributes.push(new crouton_thrift.KeyValue({
-                Key   : coerce.toString(key),
-                Value : coerce.toString(this._attributes[key]),
+        // For pre-OpenTracing, legacy reasons always include 'end_user_id' as
+        // a join ID.
+        let joinIDs = [];
+        this._addTagAsJoinID('end_user_id');
+        for (let key in this._joinIDs) {
+            this._addTagAsJoinID(key);
+        }
+
+        // Add any runtime global join IDs (give preference to local tags,
+        // though).
+        let globalJoinIDs = this._runtime._options.join_ids;
+        for (let key in globalJoinIDs) {
+            if (this._tags[key] !== undefined) {
+                continue;
+            }
+            let value = globalJoinIDs[key];
+            joinIDs.push(new crouton_thrift.TraceJoinId({
+                TraceKey : coerce.toString(key),
+                Value    : coerce.toString(value),
             }));
         }
 
@@ -120,9 +214,21 @@ export default class SpanImp extends ActiveSpan {
             join_ids        : joinIDs,
             oldest_micros   : this._beginMicros,
             youngest_micros : this._endMicros,
-            attributes      : attributes,
-            error_flag      : null,
+            attributes      : tags,
+            error_flag      : this._errorFlag,
         });
         return record;
+    }
+
+    // Helper to reduce duplicated code
+    _addTagAsJoinID(joinIDs, key) {
+        let value = this._tags[key];
+        if (value === undefined) {
+            return;
+        }
+        joinIDs.push(new crouton_thrift.TraceJoinId({
+            TraceKey : coerce.toString(key),
+            Value    : coerce.toString(value),
+        }));
     }
 }

@@ -70,12 +70,20 @@ export default class PlatformNode {
         return Math.floor(startTimeMicros + hrTime[0] * 1000000.0 + hrTime[1] / 1000.0);
     }
 
+    runtimeGUID(groupName) {
+        return this.generateUUID();
+    }
+
     generateUUID() {
         return require("crypto").randomBytes(8).toString('hex');
     }
 
     onBeforeExit(...args) {
         process.on('beforeExit', ...args);
+    }
+
+    plugins() {
+        return [];
     }
 
     options() {

@@ -9,18 +9,40 @@ export default class Runtime {
 
         // Built-in plugins
         this._imp.addPlugin(this, require('./plugins/log_to_console'));
+
+        // Initialize the platform options after the built-in plugins in
+        // case any of those options affect the built-ins.
+        this._imp.addPlatformPlugins(this);
+        this._imp.setPlatformOptions();
+    }
+
+    guid() {
+        return this._imp.guid();
     }
 
     initialize(opts) {
         return this._imp.initialize(opts);
     }
 
-    options(opts) {
-        return this._imp.options(opts);
+    options() {
+        return this._imp.options(...arguments);
     }
 
     span(operation) {
         return this._imp.span(operation);
+    }
+
+    info(message, payload) {
+
+    }
+    warn(message, payload) {
+
+    }
+    error(message, payload) {
+
+    }
+    fatal(message, payload) {
+
     }
 
     infof(fmt, ...args) {

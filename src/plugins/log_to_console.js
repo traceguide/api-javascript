@@ -14,7 +14,7 @@ class LogToConsole {
     start(runtime) {
         this._runtime = runtime;
         this._runtime.addOption("log_to_console", {
-            type         : "boolean",
+            type         : "bool",
             defaultValue : false,
         });
         this._runtime.on('options', this._optionsCb);
@@ -37,7 +37,7 @@ class LogToConsole {
     }
 
     _handleLogAdded(record) {
-        let level = record.level;
+        let level = constants.LOG_STRING_TO_LEVEL[record.level];
         let message  = record.message;
 
         // Ignore records without a message (e.g. a stable_name log record)
@@ -45,12 +45,18 @@ class LogToConsole {
             return;
         }
 
-        if (level === constants.LOG_INFO) {
-            console.log(message);
-        } else if (level === constants.LOG_WARN) {
-            console.warn(message);
-        } else {
+        switch (level) {
+        case constants.LOG_ERROR:
+        case constants.LOG_FATAL:
             console.error(message);
+            break;
+        case constants.LOG_WARN:
+            console.warn(message);
+            break;
+        case constants.LOG_INFO:
+        default:
+            console.log(message);
+            break;
         }
     }
 }

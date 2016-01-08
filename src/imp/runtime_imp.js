@@ -11,56 +11,49 @@ const _             = require('underscore');
 const constants     = require('../constants');
 const coerce        = require('./coerce');
 const util          = require('./util/util');
-const LogBuilder    = require('./logbuilder');
+const LogBuilder    = require('./log_builder');
 const ClockState    = require('./util/clock_state');
 const packageObject = require('../../package.json');
 
-
-const kDefaultOptions = {
-    access_token            : '',
-    group_name              : '',
-    service_host            : 'api.traceguide.io',
-    service_port            : 9997,
-    secure                  : true,
-    disabled                : false,
-
-    max_log_records         : 2048,
-    max_span_records        : 2048,
-    report_period_millis    : 2500,
-
-    // If true, log records are echoed to the console
-    log_to_console          : false,
-
-    // If true, internal logs will be included in the reports
-    debug                   : false,
-
-    // glog-ish verbosity level for internal logs
-    verbosity               : 0,
-
-    // Do not create a interval-based reporting loop. Useful for unit testing.
-    disable_reporting_loop  : false,
-
-    // If false, SSL certificate verification is skipped. Useful for localhost
-    // testing.
-    certificate_verification: true,
-
-    // Hard limits to protect against worst-case behaviors
-    log_message_length_hard_limit : 512 * 1024,
-    log_payload_length_hard_limit : 512 * 1024,
-};
-
 export default class RuntimeImp extends EventEmitter {
 
-    constructor() {
+    constructor(api, config) {
         super();
 
         // Platform abstraction layer
         this._platform = new Platform(this);
-        this._runtimeGUID = this._platform.generateUUID();
-        this._options = _.clone(kDefaultOptions);
-
+        this._runtimeGUID = null;  // Set once the group name is set
         this._pluginNames = {};
-        this._customOptions = [];
+        this._options = {};
+        this._optionDescs = [];
+
+        // Core options
+        //
+        this.addOption('access_token',                  { type: 'string',  defaultValue: '' });
+        this.addOption('group_name',                    { type: 'string',  defaultValue: '' });
+        this.addOption('disabled',                      { type: 'bool',    defaultValue: false });
+        this.addOption('service_host',                  { type: 'string',  defaultValue: 'api.traceguide.io' });
+        this.addOption('service_port',                  { type: 'int',     defaultValue: 9997 });
+        this.addOption('secure',                        { type: 'bool',    defaultValue: true });
+        this.addOption('report_period_millis',          { type: 'int',     defaultValue: 2500 });
+        this.addOption('max_log_records',               { type: 'int',     defaultValue: 4096 });
+        this.addOption('max_span_records',              { type: 'int',     defaultValue: 4096 });
+        this.addOption('join_ids',                      { type: 'any',     defaultValue: {} });
+
+        // Debugging options
+        //
+        // If false, SSL certificate verification is skipped. Useful for testing.
+        this.addOption('certificate_verification',      { type: 'bool',    defaultValue: true });
+        // If true, internal logs will be included in the reports
+        this.addOption('debug',                         { type: 'bool',    defaultValue: false });
+        // I.e. report only on explicit calls to flush()
+        this.addOption('disable_reporting_loop',        { type: 'bool',    defaultValue: false });
+        // Log verbosity level
+        this.addOption('verbosity',                     { type: 'int', min: 0, max: 2, defaultValue: 0 });
+
+        // Hard upper limits to protect against worst-case scenarios
+        this.addOption('log_message_length_hard_limit', { type: 'int',     defaultValue: 512 * 1024 });
+        this.addOption('log_payload_length_hard_limit', { type: 'int',     defaultValue: 512 * 1024 });
 
         let now = this._platform.nowMicros();
 
@@ -102,9 +95,8 @@ export default class RuntimeImp extends EventEmitter {
             flush_exceptions     : 0,
         };
 
-        // Set any platform-specific options.  E.g. the --traceguide-debug=true
-        // flag on Node.
-        this.options(this._platform.options());
+        // Current runtime state / status
+        this._flushIsActive = false;
     }
 
 
@@ -112,51 +104,41 @@ export default class RuntimeImp extends EventEmitter {
     // Options
     //-----------------------------------------------------------------------//
 
+    guid() {
+        return this._runtimeGUID;
+    }
+
     initialize(opts) {
         this.options(opts || {});
     }
 
+    setPlatformOptions() {
+        this.options(this._platform.options());
+    }
+
+    // Register a new option.  Used by plug-ins.
+    addOption(name, desc) {
+        this._internalInfofV2(`Adding options ${desc.name} with value = ${desc.defaultValue}`);
+
+        desc.name = name;
+        this._optionDescs.push(desc);
+        this._options[desc.name] = desc.defaultValue;
+    }
+
     options(opts) {
+        if (arguments.length === 0) {
+            console.assert(typeof this._options === "object", "Internal error: _options field incorrect");
+            return this._options;
+        }
         if (typeof opts !== 'object') {
             throw new UserException('options() must be called with an object: type was ' + typeof opts);
         }
 
-        // Update the options data
         // Track what options have been modified
         let modified = {};
-        this._setOptionString(modified,  opts, 'access_token');
-        this._setOptionBoolean(modified, opts, 'certificate_verification');
-        this._setOptionBoolean(modified, opts, 'debug');
-        this._setOptionBoolean(modified, opts, 'disabled');
-        this._setOptionBoolean(modified, opts, 'disable_reporting_loop');
-        this._setOptionString(modified,  opts, 'group_name');
-        this._setOptionInt(modified,     opts, 'log_message_length_hard_limit');
-        this._setOptionInt(modified,     opts, 'log_payload_length_hard_limit');
-        this._setOptionInt(modified,     opts, 'max_log_records');
-        this._setOptionInt(modified,     opts, 'max_span_records');
-        this._setOptionInt(modified,     opts, 'report_period_millis');
-        this._setOptionBoolean(modified, opts, 'secure');
-        this._setOptionString(modified,  opts, 'service_host');
-        this._setOptionInt(modified,     opts, 'service_port');
-        this._setOptionInt(modified,     opts, 'verbosity', 0, 2);
-
-        // Plug-ins can add customer options. Scan for these.
-        for (let desc of this._customOptions) {
-            switch (desc.type) {
-            case "boolean":
-                this._setOptionBoolean(modified, opts, desc.name);
-                break;
-            case "int":
-                this._setOptionInt(modified, opts, desc.name);
-                break;
-            case "string":
-                this._setOptionString(modified, opts, desc.name);
-                break;
-            default:
-                throw new UserException("Unknown option type '%s'", desc.type);
-            }
+        for (let desc of this._optionDescs) {
+            this._setOptionInternal(modified, opts, desc);
         }
-
         // Check for any invalid options
         for (let key in opts) {
             if (modified[key] === undefined) {
@@ -182,66 +164,68 @@ export default class RuntimeImp extends EventEmitter {
         this.emit('options', modified, this._options);
     }
 
-    _setOptionInt(modified, opts, name, min, max) {
+    _setOptionInternal(modified, opts, desc) {
+        let name = desc.name;
         let value = opts[name];
         let valueType = typeof value;
         if (value === undefined) {
             return;
         }
-        if (valueType !== "number" || Math.floor(value) != value) {
-            this._internalWarnf("Invalid int option '%s' '%j'", name, value);
-            return;
-        }
-        if (min !== undefined && max !== undefined ) {
-            if (!(value >= min && value <= max)) {
-                this._internalWarnf("Option '%s' out of range '%j' is not between %j and %j", name, value, min, max);
+
+        // Parse the option (and check constraints)
+        switch (desc.type) {
+
+        case "any":
+            break;
+
+        case "bool":
+            if (value !== true && value !== false) {
+                this._internalWarnf("Invalid boolean option '%s' '%j'", name, value);
+                return;
             }
-        }
-        this._setOptionValue(modified, opts, name, value);
-    }
+            break;
 
-    _setOptionString(modified, opts, name) {
-        let value = opts[name];
-        let valueType = typeof value;
-        if (value === undefined) {
-            return;
-        }
-        switch (valueType) {
+        case "int":
+            if (valueType !== "number" || Math.floor(value) != value) {
+                this._internalWarnf("Invalid int option '%s' '%j'", name, value);
+                return;
+            }
+            if (desc.min !== undefined && desc.max !== undefined ) {
+                if (!(value >= desc.min && value <= desc.max)) {
+                    this._internalWarnf("Option '%s' out of range '%j' is not between %j and %j", name, value, min, max);
+                    return;
+                }
+            }
+            break;
+
         case "string":
+            switch (valueType) {
+            case "string":
+                break;
+            case "number":
+                value = coerce.toString(value);
+                break;
+            default:
+                this._internalWarnf("Invalid string option '%s' '%j'", name, value);
+                return;
+            }
             break;
-        case "number":
-            value = coerce.toString(value);
-            break;
+
         default:
-            this._internalWarnf("Invalid string option '%s' '%j'", name, value);
+            this._internalWarnf(`Unknown option type '${desc.type}'`);
             return;
         }
-        this._setOptionValue(modified, opts, name, value);
-    }
 
-    _setOptionBoolean(modified, opts, name) {
-        let value = opts[name];
-        if (value === undefined) {
-            return;
-        }
-        if (value !== true && value !== false) {
-            this._internalWarnf("Invalid boolean option '%s' '%j'", name, value);
-            return;
-        }
-        this._setOptionValue(modified, opts, name, value);
-    }
-
-    _setOptionValue(modified, opts, name, newValue) {
+        // Set the new value, recording any modifications
         let oldValue = this._options[name];
         if (oldValue === undefined) {
             throw this._internalException("Attempt to set unknown option '%s'", name);
         }
-
         modified[name] = {
             oldValue : oldValue,
-            newValue : newValue,
+            newValue : value,
         };
-        this._options[name] = newValue;
+        this._options[name] = value;
     }
 
     // The Thrift authorization and runtime information is initializaed as soon
@@ -278,6 +262,8 @@ export default class RuntimeImp extends EventEmitter {
         if (this._options.access_token.length > 0 && this._options.group_name.length > 0) {
             this._internalInfofV2("Initializing thrift reporting data");
 
+            this._runtimeGUID = this._platform.runtimeGUID(this._options.group_name);
+
             this._thriftAuth = new crouton_thrift.Auth({
                 access_token : this._options.access_token,
             });
@@ -313,6 +299,12 @@ export default class RuntimeImp extends EventEmitter {
     // Plugins
     //-----------------------------------------------------------------------//
 
+    addPlatformPlugins(api) {
+        for (let plugin of this._platform.plugins()) {
+            this.addPlugin(api, plugin);
+        }
+    }
+
     addPlugin(api, plugin) {
         let name = plugin.name();
         if (this._pluginNames[name]) {
@@ -321,12 +313,6 @@ export default class RuntimeImp extends EventEmitter {
         this._pluginNames[name] = true;
 
         plugin.start(api);
-    }
-
-    addOption(name, desc) {
-        desc.name = name;
-        this._customOptions.push(desc);
-        this._options[desc.name] = desc.defaultValue;
     }
 
     //-----------------------------------------------------------------------//
@@ -621,6 +607,8 @@ export default class RuntimeImp extends EventEmitter {
 
         // Ensure the runtime GUID is set as it is possible buffer logs and
         // spans before the GUID is necessarily set.
+        console.assert(this._runtimeGUID !== null);
+
         for (let record of logRecords) {
             record.runtime_guid = this._runtimeGUID;
         }
@@ -656,8 +644,6 @@ export default class RuntimeImp extends EventEmitter {
         this._transport.report(detached, this._thriftAuth, report,  (err, res) => {
 
             let destinationMicros = this._platform.nowMicros();
-            this.emit("postreport", report);
-
             if (err) {
                 // How many errors in a row?
                 this._reportErrorStreak++;

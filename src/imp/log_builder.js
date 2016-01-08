@@ -97,7 +97,7 @@ class LogBuilder {
     _encodePayload(data) {
         let payloadJSON = null;
         try {
-            payloadJSON = JSON.stringify(payload);
+            payloadJSON = JSON.stringify(data);
         } catch (_ignored) {
             return null;
         }

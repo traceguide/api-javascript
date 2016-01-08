@@ -10,6 +10,12 @@ export const LOG_LEVEL_TO_STRING = {
     LOG_ERROR : 'E',
     LOG_FATAL : 'F',
 };
+export const LOG_STRING_TO_LEVEL = {
+    'I' : LOG_INFO,
+    'W' : LOG_WARN,
+    'E' : LOG_ERROR,
+    'F' : LOG_FATAL,
+};
 
 // The report interval for empty reports used to sample the clock skew
 export const CLOCK_STATE_REFRESH_INTERVAL_MS = 350;

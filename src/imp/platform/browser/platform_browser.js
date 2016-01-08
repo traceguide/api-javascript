@@ -1,3 +1,9 @@
+let optionsParser = require('./options_parser.js');
+let util = require('./util');
+
+const kRuntimeGUIDCookiePrefix = `traceguide_guid`;
+const kSessionIDCookieKey = `traceguide_session_id`;
+const kCookieTimeToLiveSeconds = 7 * 24 * 60 * 60;
 
 let nowMicrosImp = (function() {
     // Is a hi-res timer available?
@@ -18,7 +24,6 @@ let nowMicrosImp = (function() {
     }
 })();
 
-
 class PlatformBrowser {
 
     constructor(imp) {
@@ -32,10 +37,38 @@ class PlatformBrowser {
         return nowMicrosImp();
     }
 
+    // Return the GUID to use for the runtime. The intention is to reuse the
+    // GUID so that logically a single browser session looks like a single
+    // runtime.
+    runtimeGUID(groupName) {
+        // Account for the groupName in the same that multiple apps or services
+        // are running on the same domain (and should not share the same
+        // runtime GUID).
+        let cookieKey = `${kRuntimeGUIDCookiePrefix}/${groupName}`;
+        let uuid = util.cookie(cookieKey) || this._generateLongUUID();
+        util.cookie(cookieKey, uuid, kCookieTimeToLiveSeconds, '/');
+
+        // Also create a session ID as well to give the server more information
+        // to coordinate with.
+        let sessionID = util.cookie(kSessionIDCookieKey) || this._generateLongUUID();
+        util.cookie(kSessionIDCookieKey, sessionID, kCookieTimeToLiveSeconds, '/');
+
+        return uuid;
+    }
+
     // A low-quality UUID: this is just a 53-bit random integer! (53 bits since the
     // backing store for the number is a 64-bit float).
     generateUUID() {
-        return Math.floor(Math.random() * 9007199254740992).toString(10);
+        return Math.floor(Math.random() * 9007199254740992).toString(16);
+    }
+
+    _generateLongUUID() {
+        let a = Math.floor(Math.random() * 0xFFFFFFFF).toString(16);
+        let b = Math.floor(Math.random() * 0xFFFFFFFF).toString(16);
+        while (b.length < 8) {
+            b = '0' + b;
+        }
+        return a + b;
     }
 
     onBeforeExit(...args) {
@@ -44,25 +77,23 @@ class PlatformBrowser {
         }
     }
 
+    plugins() {
+        return [
+            require('../../../plugins/instrument_xhr'),
+            require('../../../plugins/instrument_document_load'),
+        ];
+    }
+
     options() {
         let opts = {};
-        if (window) {
-            let params = urlQueryParameters();
-            if (params.traceguide_debug) {
-                opts.debug = true;
-            }
-            if (params.traceguide_verbosity) {
-                try {
-                    opts.verbosity = parseInt(params.traceguide_verbosity);
-                } catch (_ignored) {}
-            }
-        }
+        optionsParser.parseScriptElementOptions(opts);
+        optionsParser.parseURLQueryOptions(opts);
         return opts;
     }
 
     runtimeAttributes() {
         return {
-            cruntime_platform : "browser",
+            cruntime_platform : 'browser',
         };
     }
 
@@ -94,22 +125,6 @@ class PlatformBrowser {
 }
 
 
-function urlQueryParameters(defaults) {
-    let vars = {};
-    let qi = window.location.href.indexOf('?');
-    if (qi < 0) {
-        return vars;
-    }
-    let slice = window.location.href.slice(qi + 1);
-    if (slice.indexOf("#") >= 0) {
-        slice = slice.slice(0, slice.indexOf("#"));
-    }
-    let hashes = slice.replace(/\+/, "%20").split('&');
-    for (let i = 0; i < hashes.length; i++) {
-        let hash = hashes[i].split('=');
-        vars[decodeURIComponent(hash[0])] = decodeURIComponent(hash[1]);
-    }
-    return vars;
-}
+
 
 module.exports = PlatformBrowser;

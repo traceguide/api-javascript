@@ -19,7 +19,7 @@ fs.writeFileSync(outfile, [
     "//",
     "// GENERATED FILE - DO NOT EDIT DIRECTLY",
     "//",
-    "// See scripts/" + __filename,
+    "// See scripts/" + path.basename(__filename),
     "//",
     "//",
     "(function() {",

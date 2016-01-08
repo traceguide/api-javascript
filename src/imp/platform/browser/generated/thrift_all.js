@@ -1,7 +1,7 @@
 //
 // GENERATED FILE - DO NOT EDIT DIRECTLY
 //
-// See scripts//Users/bcronin/reslabs/node/packages/api-javascript/scripts/build_browser_thrift_lib.js
+// See scripts/build_browser_thrift_lib.js
 //
 //
 (function() {

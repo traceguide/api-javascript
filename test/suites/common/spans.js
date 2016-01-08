@@ -5,11 +5,14 @@ it("should capture parent span guids", function () {
     child.end();
     parent.end();
 
+    var parentTags = parent.tags();
+    var childTags = child.tags();
+
     expect(parent.guid()).not.to.be.undefined;
-    expect(parent.attributes()['parent_span_guid']).to.be.undefined;
+    expect(parentTags['parent_span_guid']).to.be.undefined;
 
     expect(child.guid()).not.to.be.undefined;
-    expect(child.attributes()['parent_span_guid']).to.equal(parent.guid());
+    expect(childTags['parent_span_guid']).to.equal(parent.guid());
 
     traceguide.flush();
 });
